@@ -1,45 +1,55 @@
 #include "KeypadManager.h"
 #include "DsoManager.h"
 
-// Definicja pinów zgodnie z Twoim połączeniem
-const int R_PINS[] = {13, 12, 14, 27}; // Row 1, 2, 3, 4
-const int C_PINS[] = {26, 25, 33, 32}; // Column 1, 2, 3, 4
+extern bool audioWyciszone;
+extern unsigned long czasWyciszenia;
+
+const int R_PINS[] = {13, 12, 14, 27}; 
+const int C_PINS[] = {26, 25, 33, 32}; 
 
 unsigned long ostatniCzasACK = 0;
+const int CZAS_STABILIZACJI = 100; //ms - sygnał musi być ciagle LOW przez ten czas
+unsigned long licznikWcisniecia = 0;
+bool akcjaWykonana = false;
 
 void initKeypad() {
-  // Wiersze jako wyjścia
   for (int i = 0; i < 4; i++) {
     pinMode(R_PINS[i], OUTPUT);
-    digitalWrite(R_PINS[i], HIGH); // Stan spoczynkowy: HIGH
+    digitalWrite(R_PINS[i], HIGH);
   }
-  // Kolumny jako wejścia z wewnętrznym podciągnięciem
   for (int i = 0; i < 4; i++) {
-    pinMode(C_PINS[i], INPUT_PULLUP);
+    pinMode(C_PINS[i], INPUT_PULLUP); // Wewnętrzny rezystor podciągający
   }
 }
 
 void checkKeypad() {
-  // Skanujemy Row 1 (tam są przyciski S1, S2, S3, S4)
   digitalWrite(R_PINS[0], LOW); 
+  // Krótka przerwa, aby stan elektryczny pinu się ustabilizował po zmianie na LOW
+  delayMicroseconds(50); 
 
-  // Sprawdzamy Column 1 (Pin D26) -> to będzie przycisk S1
-  if (digitalRead(C_PINS[0]) == LOW) { 
-    if (millis() - ostatniCzasACK > 400) { // Debouncing
-      Serial.println("Klawiatura: ACK - Wyciszenie przyciskiem S1");
-      stopDso();
-      ostatniCzasACK = millis();
+  bool s1 = (digitalRead(C_PINS[0]) == LOW);
+  bool s4 = (digitalRead(C_PINS[3]) == LOW);
+
+  if (s1 || s4) {
+    if (licznikWcisniecia == 0) {
+      licznikWcisniecia = millis(); // Zaczynamy mierzyć czas trzymania
     }
+
+    // Warunek: Przycisk musi być trzymany stabilnie przez CZAS_STABILIZACJI
+    if (!akcjaWykonana && (millis() - licznikWcisniecia > CZAS_STABILIZACJI)) {
+      Serial.println(s1 ? "Klawiatura: ACK S1" : "Klawiatura: ACK S4");
+      stopDso(); // [cite: 83, 88]
+      
+      audioWyciszone = true;    // Informujemy SensorManager o wyciszeniu
+      czasWyciszenia = millis(); // Zaczynamy odliczać 5 sekund ciszy
+      
+      akcjaWykonana = true;
+    }
+  } else {
+    // Reset wszystkiego, gdy nic nie jest wciśnięte
+    licznikWcisniecia = 0;
+    akcjaWykonana = false;
   }
 
-  // Opcjonalnie: Sprawdzamy Column 4 (Pin D32) -> to będzie przycisk S4
-  if (digitalRead(C_PINS[3]) == LOW) { 
-    if (millis() - ostatniCzasACK > 400) {
-      Serial.println("Klawiatura: ACK - Wyciszenie przyciskiem S4");
-      stopDso();
-      ostatniCzasACK = millis();
-    }
-  }
-
-  digitalWrite(R_PINS[0], HIGH); // Powrót do stanu HIGH
+  digitalWrite(R_PINS[0], HIGH); 
 }

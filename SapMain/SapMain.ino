@@ -10,6 +10,8 @@
 #include "SapNetwork.h"
 #include "DsoManager.h"
 #include "SensorManager.h"
+#include "VentManager.h"
+#include "IndicatorManager.h"
 
 // --- OBIEKTY ---
 LcdManager lcdMgr;
@@ -31,19 +33,25 @@ void changeState(SystemState newState, String name, String zone, String source, 
 
   lcdMgr.updateStatus(currentState);
   // netMgr.publishStatus(currentState, name, zone, source, user); // Odkomentuj gdy WiFi będzie gotowe
+
+  // Załóżmy, że DSO gra tylko przy alarmie lub teście.
+    // Przekazujemy 'false' dla dsoActive, bo obsłużymy to logiką stanów
+    updateIndicatorsFromState(currentState, false);
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(115200); // [cite: 76]
   
-  initDso();      // Start odtwarzacza
-  lcdMgr.begin();
+  initDso(); // [cite: 79]
+  lcdMgr.begin(); // [cite: 80]
   lcdMgr.showStartup();
   
-  initSensors();  // Start linii dozorowych (4, 5, 18)
-  initKeypad();   // Start klawiatury (piny INPUT_PULLUP)
+  initSensors(); // [cite: 77, 82]
+  initVent();    // Inicjalizacja wentylatora (GPIO 15)
+  initKeypad();  // Klawiatura matrycowa [cite: 80, 89]
   
-  // Stan początkowy
+  initIndicators();
+
   changeState(STATE_IDLE, "CZUWANIE", "CALY_OBIEKT", "SYSTEM", "SYSTEM");
 }
 
@@ -53,6 +61,10 @@ void loop() {
 
   // 2. Obsługa klawiatury - Przycisk 1 jako WYCISZENIE (ACK)
   checkKeypad();
+
+  // Pobierz status DSO (trzeba dodać małą funkcję w DsoManager lub użyć zmiennej globalnej)
+  // Na razie załóżmy, że przekazujemy false, dopóki nie dodamy gettera.
+  extern bool audioWyciszone; // Możemy użyć tego jako hacka, albo dodać flagę w DsoManager
 
   // 3. Odbiór rozkazów z sieci
   String remoteCmd = netMgr.getLatestCommand();
