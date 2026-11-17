@@ -20,6 +20,7 @@ extern SapNetworkManager netMgr;
 extern EventLogger logger;
 extern String actionSource;
 extern bool ntpEnabled;
+extern void serviceDelay(unsigned long ms);
 
 SystemController::SystemController() {
     timerStart = 0;
@@ -51,7 +52,7 @@ void SystemController::showPopup(String line1, String line2) {
     netMgr.publishTelemetry();
     
     lcdMgr.showInfo(line1, line2);
-    delay(1500);
+    serviceDelay(1500);
     
     popupActive = false;
     netMgr.publishTelemetry();
@@ -264,7 +265,7 @@ void SystemController::handleInput(char key) {
                             if (ntpEnabled) {
                                 showPopup("SYNC NTP...", "PROSZE CZEKAC");
                                 configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
-                                delay(2000);
+                                serviceDelay(2000);
                                 showPopup("CZAS SYNCH.", "OK!");
                                 logger.addEvent("ZEGAR", "NTP ON");
                                 
@@ -289,7 +290,7 @@ void SystemController::handleInput(char key) {
                     else if (key == 'A') { // --- PRZYCISK: WYMUSZENIE SYNC NTP ---
                         showPopup("SYNC NTP...", "PROSZE CZEKAC");
                         configTzTime("CET-1CEST,M3.5.0,M10.5.0/3", "pool.ntp.org", "time.nist.gov");
-                        delay(2000);
+                        serviceDelay(2000);
                         showPopup("SYNC NTP", "ZAKONCZONA!");
                         logger.addEvent("ZEGAR", "SYNC NTP");
                         

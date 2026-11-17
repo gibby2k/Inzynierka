@@ -75,9 +75,18 @@ void SapNetworkManager::reconnect() {
     // Generujemy losowe ID, żeby broker nas nie wyrzucał
     String clientId = "ESP32-SAP-" + String(random(0xffff), HEX);
     
-    if (client.connect(clientId.c_str())) {
+    // LWT: jesli centrala zniknie bez pozegnania, broker sam opublikuje "OFFLINE" (retained)
+    if (client.connect(clientId.c_str(), MQTT_TOPIC_STATUS, 1, true, "OFFLINE")) {
       Serial.println("Polaczono!");
       client.subscribe(MQTT_TOPIC_CONTROL); // Nasłuchujemy rozkazów
+      client.publish(MQTT_TOPIC_STATUS, "ONLINE", true);
+
+      // Po (ponownym) polaczeniu nadpisujemy retained stan alarmu AKTUALNYM stanem
+      // (changeState() w setup() wykonuje sie zanim MQTT jest polaczone)
+      extern SystemState currentState;
+      extern String currentName, currentZone, currentSource;
+      publishAlarm(currentState, currentName, currentZone, currentSource);
+      publishTelemetry();
     } else {
       Serial.print("Blad rc="); Serial.println(client.state());
     }
@@ -131,7 +140,7 @@ void SapNetworkManager::publishAlarm(SystemState state, String stateName, String
   char json[150];
   snprintf(json, sizeof(json), "{\"code\":%d,\"name\":\"%s\",\"zone\":\"%s\",\"src\":\"%s\"}", 
            (int)state, stateName.c_str(), zone.c_str(), source.c_str());
-  client.publish(MQTT_TOPIC_ALARMS, json, false); // Standardowy PubSubClient wysyła z QoS 0, lecz izolacja tematu w brokerze zapewnia brak opóźnień kolejkowania.
+  client.publish(MQTT_TOPIC_ALARMS, json, true); // RETAINED: nowy klient WWW od razu dostaje ostatni stan alarmu
 }
 
 void SapNetworkManager::publishLog(uint32_t id, String st, String zo, String ts) {

@@ -101,8 +101,7 @@ void AccessManager::resetTimer() {
 
 bool AccessManager::loop() {
     if (currentLevel > LEVEL_GUEST) {
-        // Ustawienie na 10 minut (600000 milisekund)
-        if (millis() - lastActivityTime > 600000) {
+        if (millis() - lastActivityTime > LOGOUT_TIMEOUT) {
             currentLevel = LEVEL_GUEST;
             isLoggingIn = false;
             inputBuffer = "";

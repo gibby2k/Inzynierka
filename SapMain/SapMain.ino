@@ -65,6 +65,26 @@ void changeState(SystemState newState, String name, String zone, String source, 
   netMgr.publishAlarm(currentState, currentName, currentZone, currentSource);
 }
 
+// =====================================================================
+//  serviceDelay() - zamiennik delay() dla popupow i synchronizacji NTP.
+//  W trakcie oczekiwania utrzymuje polaczenie MQTT (keep-alive, odbior
+//  komend do bufora) i odswieza wyswietlacz 7-seg (odliczanie T1/T2).
+//  Logika alarmowa (czujka, timery T1/T2) dziala na millis(), wiec
+//  zostaje obsluzona zaraz po powrocie - bez ryzyka reentrancji.
+// =====================================================================
+void serviceDelay(unsigned long ms) {
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    netMgr.loop();
+    if (currentState == STATE_PRE_ALARM || currentState == STATE_VERIFICATION) {
+      updateDisplayCountdown(sysCtrl.getRemainingTime());
+    } else {
+      updateDisplayClock();
+    }
+    delay(10);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   

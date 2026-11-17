@@ -8,28 +8,54 @@
 extern int simHour, simMinute; 
 extern SapNetworkManager netMgr;
 
+// =====================================================================
+//  KOLEJKA ZADAN CHMUROWYCH (D1) - wszystko poza glowna petla
+//  POST /log   -> nowy wpis
+//  DELETE /clear -> czyszczenie bazy (wczesniej blokowalo loop())
+// =====================================================================
+enum CloudJobType : uint8_t { JOB_POST_LOG = 0, JOB_CLEAR = 1 };
+
 struct CloudJob {
+    CloudJobType type;
     char payload[200];
 };
 
 QueueHandle_t cloudQueue = NULL;
 
-// Wątek testowy BEZ SZYFROWANIA SSL (czyste HTTP)
+static int cloudRequest(const char* method, const char* path, const char* body) {
+    WiFiClientSecure secureClient;
+    secureClient.setInsecure();          // brak weryfikacji CA (prototyp) - szyfrowanie dziala
+    HTTPClient http;
+    http.setTimeout(5000);
+
+    String url = String(CLOUD_API_BASE) + path;
+    if (!http.begin(secureClient, url)) return -1;
+
+    http.addHeader("X-API-Key", CLOUD_API_KEY);
+    int code;
+    if (body != nullptr) {
+        http.addHeader("Content-Type", "application/json");
+        code = http.sendRequest(method, (uint8_t*)body, strlen(body));
+    } else {
+        code = http.sendRequest(method);
+    }
+    http.end();
+    return code;
+}
+
 void cloudWorkerTask(void *pvParameters) {
     CloudJob job;
     for (;;) {
         if (xQueueReceive(cloudQueue, &job, portMAX_DELAY) == pdTRUE) {
-            if (WiFi.status() == WL_CONNECTED) {
-                // Używamy zwykłego klienta HTTP bez warstwy szyfrującej
-                HTTPClient http;
-                
-                // UWAGA: Jeśli Cloudflare Worker wymaga HTTPS, zwykłe HTTP może nie zadziałać,
-                // ale sprawdzimy, czy sama rezygnacja z szyfrowania zdejmie obciążenie z procesora.
-                if (http.begin("http://sap-api.lamot40.workers.dev/log")) {
-                    http.addHeader("Content-Type", "application/json");
-                    http.POST((uint8_t*)job.payload, strlen(job.payload));
-                    http.end();
-                }
+            if (WiFi.status() != WL_CONNECTED) continue;
+
+            int code;
+            if (job.type == JOB_CLEAR) {
+                code = cloudRequest("DELETE", "/clear", nullptr);
+                Serial.printf("Cloud D1: DELETE /clear -> %d\n", code);
+            } else {
+                code = cloudRequest("POST", "/log", job.payload);
+                Serial.printf("Cloud D1: POST /log -> %d\n", code);
             }
         }
     }
@@ -38,7 +64,8 @@ void cloudWorkerTask(void *pvParameters) {
 void initCloudWorker() {
     if (cloudQueue == NULL) {
         cloudQueue = xQueueCreate(20, sizeof(CloudJob));
-        xTaskCreatePinnedToCore(cloudWorkerTask, "CloudTask", 3072, NULL, tskIDLE_PRIORITY + 1, NULL, 0);
+        // TLS potrzebuje wiekszego stosu niz zwykly HTTP (3072 -> 8192)
+        xTaskCreatePinnedToCore(cloudWorkerTask, "CloudTask", 8192, NULL, tskIDLE_PRIORITY + 1, NULL, 0);
     }
 }
 
@@ -111,6 +138,7 @@ void EventLogger::addEvent(String state, String zone) {
     // --- ZLECENIE WYSYŁKI DO CHMURY D1 W TLE ---
     initCloudWorker();
     CloudJob job;
+    job.type = JOB_POST_LOG;
     LogEvent newest;
     getEvent(0, newest); // Pobieramy najnowsze zdarzenie z bufora wraz z jego ID
     
@@ -153,21 +181,14 @@ void EventLogger::clearLogs() {
     eventCount = 0;
     saveToMemory(); // Zapisanie "czystych" (wyzerowanych) liczników
     Serial.println("EventLogger: Pamiec zostala trwale wykasowana.");
-    // --- CZYSZCZENIE BAZY CLOUDFLARE D1 ---
-    // --- CZYSZCZENIE BAZY CLOUDFLARE D1 (HTTPS) ---
-    if (WiFi.status() == WL_CONNECTED) {
-        WiFiClientSecure secureClient;
-        secureClient.setInsecure();
-        
-        HTTPClient http;
-        if (http.begin(secureClient, "https://sap-api.lamot40.workers.dev/clear")) {
-            int httpCode = http.sendRequest("DELETE");
-            Serial.printf("Cloudflare D1 DELETE code: %d\n", httpCode);
-            http.end();
-        }
-    }
-    // --- WYSŁANIE ŚLADU AUDYTOWEGO O RESECIE DO CHMURY D1 ---
+    // --- CZYSZCZENIE BAZY D1 + SLAD AUDYTOWY (w tle, nie blokuje loop) ---
     initCloudWorker();
+
+    CloudJob clearJob;
+    clearJob.type = JOB_CLEAR;
+    clearJob.payload[0] = '\0';
+    xQueueSend(cloudQueue, &clearJob, 0);
+
     struct tm timeinfo;
     char resetTimeStr[25];
     if (getLocalTime(&timeinfo, 10)) {
@@ -176,8 +197,10 @@ void EventLogger::clearLogs() {
         strcpy(resetTimeStr, "BRAK CZASU");
     }
 
-    CloudJob job;
-    // Wysyłamy ID=0 oraz specjalny stan "PAMIEC" i strefę "RESET LOKAL."
-    snprintf(job.payload, sizeof(job.payload), "{\"id\":0,\"st\":\"PAMIEC\",\"zo\":\"RESET LOKAL.\",\"ts\":\"%s\"}", resetTimeStr);
-    //xQueueSend(cloudQueue, &job, 0);
+    // Kolejka FIFO: ten wpis trafi do D1 dopiero PO wykonaniu DELETE
+    CloudJob auditJob;
+    auditJob.type = JOB_POST_LOG;
+    snprintf(auditJob.payload, sizeof(auditJob.payload),
+             "{\"id\":0,\"st\":\"PAMIEC\",\"zo\":\"RESET LOKAL.\",\"ts\":\"%s\"}", resetTimeStr);
+    xQueueSend(cloudQueue, &auditJob, 0);
 }

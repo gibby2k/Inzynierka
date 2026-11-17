@@ -15,7 +15,7 @@ private:
     AccessLevel currentLevel;
     String inputBuffer;       
     unsigned long lastActivityTime; 
-    const unsigned long LOGOUT_TIMEOUT = 120000; // 2 minuty
+    const unsigned long LOGOUT_TIMEOUT = 600000; // Auto-wylogowanie po 10 minutach bezczynnosci
     bool isLoggingIn; 
 
 public:
