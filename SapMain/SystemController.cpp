@@ -48,13 +48,13 @@ void SystemController::showPopup(String line1, String line2) {
     popupL2 = line2;
     
     extern SystemState currentState;
-    netMgr.publishStatus(currentState, currentName, currentZone, currentSource, currentUser);
+    netMgr.publishTelemetry();
     
     lcdMgr.showInfo(line1, line2);
     delay(1500);
     
     popupActive = false;
-    netMgr.publishStatus(currentState, currentName, currentZone, currentSource, currentUser);
+    netMgr.publishTelemetry();
 }
 
 void SystemController::loop() {

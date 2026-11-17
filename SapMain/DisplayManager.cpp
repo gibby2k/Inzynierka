@@ -66,6 +66,36 @@ void updateDisplayCountdown(int seconds) {
     display.showNumberDecEx(displayValue, 0b01000000, true);
 }
 
+void updateDisplayEditClock(int h, int m, int blinkPart) {
+    // True przez 500ms, False przez 500ms
+    bool isVisible = (millis() % 1000) > 500; 
+    
+    uint8_t data[] = { 0x00, 0x00, 0x00, 0x00 };
+    
+    // Logika dla godzin (blinkPart == 0)
+    if (blinkPart == 0 && !isVisible) {
+        data[0] = 0x00; // Zgaś dziesiątki godzin
+        data[1] = 0x00; // Zgaś jednostki godzin
+    } else {
+        data[0] = display.encodeDigit(h / 10);
+        data[1] = display.encodeDigit(h % 10);
+    }
+    
+    // Logika dla minut (blinkPart == 1)
+    if (blinkPart == 1 && !isVisible) {
+        data[2] = 0x00; // Zgaś dziesiątki minut
+        data[3] = 0x00; // Zgaś jednostki minut
+    } else {
+        data[2] = display.encodeDigit(m / 10);
+        data[3] = display.encodeDigit(m % 10);
+    }
+    
+    // Wymuszenie wyświetlania dwukropka (w TM1637 często realizowane przez maskę bitową 0x80 na drugiej cyfrze)
+    data[1] |= 0x80; 
+    
+    display.setSegments(data);
+}
+
 void clearDisplay() {
     display.clear();
 }

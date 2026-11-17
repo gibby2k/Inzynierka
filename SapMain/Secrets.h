@@ -11,8 +11,9 @@
 #define MQTT_SERVER "broker.hivemq.com"
 #define MQTT_PORT 1883
 
-// Unikalny temat
-#define MQTT_TOPIC_STATUS  "pbs/student/sap/status"
-#define MQTT_TOPIC_CONTROL "pbs/student/sap/control"
+#define MQTT_TOPIC_TELEMETRY "pbs/student/sap/telemetry"
+#define MQTT_TOPIC_ALARMS    "pbs/student/sap/alarms"
+#define MQTT_TOPIC_LOGS      "pbs/student/sap/logs"
+#define MQTT_TOPIC_CONTROL   "pbs/student/sap/control"
 
 #endif

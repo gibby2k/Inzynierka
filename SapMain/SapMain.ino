@@ -61,6 +61,8 @@ void changeState(SystemState newState, String name, String zone, String source, 
   
   // --- ZMIANA NA LCD ---
   lcdMgr.updateStatus(currentState, (int)accessMgr.getLevel());
+
+  netMgr.publishAlarm(currentState, currentName, currentZone, currentSource);
 }
 
 void setup() {
@@ -150,15 +152,80 @@ if (accessMgr.loop()) {
 
   netMgr.loop();
 
+  // --- INTELIGENTNE ZARZĄDZANIE RUCHEM MQTT (Event-Driven + Heartbeat) ---
   static unsigned long lastMqttPublish = 0;
-  if (millis() - lastMqttPublish > 2000) {
+  static SystemState lastState = STATE_IDLE;
+  static int lastMenuCursor = -1;
+  static int lastMenuPage = -1;
+  static String lastLoginBuf = "";
+  static bool lastLoginState = false; // <-- DODANA ZMIENNA
+  static int lastEditHour = -1;     
+  static int lastEditMinute = -1;   
+  static uint16_t lastT1 = 0;       
+  static uint16_t lastT2 = 0; 
+  static int lastClockPartIndex = -1;      
+  
+  bool needsUpdate = false;
+
+  // 1. Wykrycie zmiany głównego stanu systemu
+  if (currentState != lastState) {
+      needsUpdate = true;
+      lastState = currentState;
+  }
+  
+  // 2. Odliczanie czasów T1/T2 (wymusza odświeżanie co 1 sekundę, aby web-timer działał)
+  if (currentState == STATE_PRE_ALARM || currentState == STATE_VERIFICATION) {
+      if (millis() - lastMqttPublish >= 1000) {
+          needsUpdate = true;
+      }
+  }
+  
+  // 3. Wykrycie interakcji z UI (klawiatura, menu, wpisywanie hasła, edycja wartości)
+  int currentMenuCursor = sysCtrl.getMenuCursor();
+  int currentMenuPage = sysCtrl.getMenuPage();
+  String currentLoginBuf = accessMgr.getBufferMasked();
+  bool currentLoginState = accessMgr.isLoginInProgress();
+  
+  int currentEditHour = sysCtrl.getEditHour();     
+  int currentEditMinute = sysCtrl.getEditMinute(); 
+  int currentClockPartIndex = sysCtrl.getClockPartIndex(); // <-- POBRANIE INDEKSU KURSDORA
+  extern uint16_t timeT1, timeT2;                  
+
+  if (currentMenuCursor != lastMenuCursor || currentMenuPage != lastMenuPage || 
+      currentLoginBuf != lastLoginBuf || currentLoginState != lastLoginState ||
+      currentEditHour != lastEditHour || currentEditMinute != lastEditMinute ||
+      timeT1 != lastT1 || timeT2 != lastT2 ||
+      currentClockPartIndex != lastClockPartIndex) { // <-- DODANY WARUNEK
+      
+      needsUpdate = true;
+      lastMenuCursor = currentMenuCursor;
+      lastMenuPage = currentMenuPage;
+      lastLoginBuf = currentLoginBuf;
+      lastLoginState = currentLoginState;
+      lastEditHour = currentEditHour;       
+      lastEditMinute = currentEditMinute;   
+      lastT1 = timeT1;                      
+      lastT2 = timeT2;  
+      lastClockPartIndex = currentClockPartIndex; // <-- AKTUALIZACJA ZMIENNEJ
+  }
+
+  // 4. Heartbeat - Sygnał życia w stanach stabilnych wysyłany co 60 sekund
+  if (millis() - lastMqttPublish >= 60000) {
+      needsUpdate = true;
+  }
+
+  // Wykonanie publikacji (z dodatkowym zabezpieczeniem przed drganiem styków klawiatury - max 1 paczka na 200ms)
+  if (needsUpdate && (millis() - lastMqttPublish >= 200)) {
       lastMqttPublish = millis();
-      netMgr.publishStatus(currentState, currentName, currentZone, currentSource, currentUser);
+      netMgr.publishTelemetry();
   }
   
   int czasDoAlarmu = sysCtrl.getRemainingTime();
   if (currentState == STATE_PRE_ALARM || currentState == STATE_VERIFICATION) {
       updateDisplayCountdown(czasDoAlarmu);
+  } else if (sysCtrl.getMenuPage() == 51) {
+      // Tryb edycji zegara ręcznego (strona 51)
+      updateDisplayEditClock(sysCtrl.getEditHour(), sysCtrl.getEditMinute(), sysCtrl.getClockPartIndex());
   } else {
       updateDisplayClock();
   }
@@ -175,7 +242,7 @@ if (accessMgr.loop()) {
     char wirtualnyKlawisz = remoteCmd.charAt(4);
     sysCtrl.handleInput(wirtualnyKlawisz); 
     
-    netMgr.publishStatus(currentState, currentName, currentZone, currentSource, currentUser);
+    netMgr.publishTelemetry();
     actionSource = "FIZYCZNIE"; // Wracamy do normy
   }
 }

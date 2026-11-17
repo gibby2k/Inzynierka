@@ -3,8 +3,10 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include "SapNetwork.h"
 
 extern int simHour, simMinute; 
+extern SapNetworkManager netMgr;
 
 struct CloudJob {
     char payload[200];
@@ -104,6 +106,8 @@ void EventLogger::addEvent(String state, String zone) {
     events[headIndex].timestamp[sizeof(events[headIndex].timestamp) - 1] = '\0';
 
     saveToMemory();
+    
+    netMgr.publishLog(totalEvents, shortState, shortZone, timeStr);
     // --- ZLECENIE WYSYŁKI DO CHMURY D1 W TLE ---
     initCloudWorker();
     CloudJob job;

@@ -23,8 +23,9 @@ class SapNetworkManager {
     void begin();
     void loop();
     
-    // --- AKTUALIZACJA: Nowa sygnatura funkcji (Protokół PRO) ---
-    void publishStatus(SystemState state, String stateName, String zone, String source, String user);
+    void publishTelemetry();
+    void publishAlarm(SystemState state, String stateName, String zone, String source);
+    void publishLog(uint32_t id, String st, String zo, String ts);
     
     void handleMessage(char* topic, byte* payload, unsigned int length);
     String getLatestCommand(); 
