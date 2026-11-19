@@ -18,6 +18,11 @@ private:
     const unsigned long LOGOUT_TIMEOUT = 600000; // Auto-wylogowanie po 10 minutach bezczynnosci
     bool isLoggingIn; 
 
+    // --- Bledne kody: BEZ blokady (w stresie podczas alarmu trzeba moc probowac dalej),
+    //     ale co 3 kolejne bledy zostaje slad w pamieci zdarzen ---
+    const uint8_t FAILED_LOG_EVERY = 3;
+    uint8_t failedAttempts;
+
 public:
     AccessManager();
     void begin();
@@ -42,6 +47,7 @@ public:
     AccessLevel getLevel();
     String getBufferMasked(); 
     bool isLoginInProgress();
+
     void startLoginSequence(); 
     void stopLoginSequence();
 };

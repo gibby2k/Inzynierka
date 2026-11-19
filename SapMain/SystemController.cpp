@@ -409,8 +409,12 @@ void SystemController::onResetPressed() {
 }
 
 void SystemController::activateFireAlarm() {
+    // NAJPIERW urzadzenia wykonawcze (DSO, oddymianie) - dopiero potem zapis i powiadomienia.
+    // Ewakuacja nie moze czekac na pamiec zdarzen ani na siec.
+    setVent(true);
+    playDsoMessage(nagraniaLinii[detectedLineId]);
+    digitalWrite(PIN_BUILTIN_LED, LOW);
     changeState(STATE_FIRE_ALARM, "POZAR !!!", nazwyLinii[detectedLineId], "SYSTEM", "SYSTEM");
-    setVent(true); playDsoMessage(nagraniaLinii[detectedLineId]); digitalWrite(PIN_BUILTIN_LED, LOW);
 }
 
 void SystemController::resetSystem() {

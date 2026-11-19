@@ -1,5 +1,6 @@
 #include "AccessManager.h"
 #include "EventLogger.h"
+#include "Secrets.h"
 
 extern EventLogger logger;
 
@@ -8,6 +9,7 @@ AccessManager::AccessManager() {
     inputBuffer = "";
     lastActivityTime = 0;
     isLoggingIn = false;
+    failedAttempts = 0;
 }
 
 void AccessManager::begin() {
@@ -28,29 +30,37 @@ void AccessManager::clearBuffer() {
 
 bool AccessManager::tryLogin() {
     lastActivityTime = millis();
-    bool success = false;
 
-    if (inputBuffer == "111") {
-        currentLevel = LEVEL_GUEST;
-        success = true;
-    } else if (inputBuffer == "222") {
-        currentLevel = LEVEL_USER;
-        success = true;
-    } else if (inputBuffer == "333") {
-        currentLevel = LEVEL_ADMIN;
-        success = true;
+    bool success = false;
+    // Kody pochodza z Secrets.h (poza repozytorium). Pusty bufor nigdy nie pasuje.
+    if (inputBuffer.length() > 0) {
+        if (inputBuffer == PIN_P1) {
+            currentLevel = LEVEL_GUEST;
+            success = true;
+        } else if (inputBuffer == PIN_P2) {
+            currentLevel = LEVEL_USER;
+            success = true;
+        } else if (inputBuffer == PIN_P3) {
+            currentLevel = LEVEL_ADMIN;
+            success = true;
+        }
     }
 
     if (success) {
         Serial.print("AccessManager: Zalogowano na P"); Serial.println((int)currentLevel);
+        failedAttempts = 0;
         isLoggingIn = false;
         inputBuffer = "";
         return true;
-    } else {
-        Serial.println("AccessManager: Bledne haslo!");
-        inputBuffer = "";
-        return false;
     }
+
+    failedAttempts++;
+    Serial.printf("AccessManager: Bledne haslo! (kolejne: %d)\n", failedAttempts);
+    if (failedAttempts % FAILED_LOG_EVERY == 0) {
+        logger.addEvent("BLEDNY", "PIN x" + String(failedAttempts));   // slad, bez blokady
+    }
+    inputBuffer = "";
+    return false;
 }
 
 bool AccessManager::canReset() {

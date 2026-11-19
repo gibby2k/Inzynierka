@@ -47,7 +47,8 @@ void cloudWorkerTask(void *pvParameters) {
     CloudJob job;
     for (;;) {
         if (xQueueReceive(cloudQueue, &job, portMAX_DELAY) == pdTRUE) {
-            if (WiFi.status() != WL_CONNECTED) continue;
+            // Bez sieci NIE wyrzucamy wpisu - czekamy, az Wi-Fi wroci (kolejka miesci 20 wpisow)
+            while (WiFi.status() != WL_CONNECTED) vTaskDelay(pdMS_TO_TICKS(2000));
 
             int code;
             if (job.type == JOB_CLEAR) {

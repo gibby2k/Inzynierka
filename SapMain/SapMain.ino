@@ -1,3 +1,5 @@
+#include <esp_task_wdt.h>
+#include <esp_arduino_version.h>
 #include "Config.h"
 #include "SystemState.h"
 #include "LcdManager.h"
@@ -75,6 +77,7 @@ void changeState(SystemState newState, String name, String zone, String source, 
 void serviceDelay(unsigned long ms) {
   unsigned long start = millis();
   while (millis() - start < ms) {
+    esp_task_wdt_reset();
     netMgr.loop();
     if (currentState == STATE_PRE_ALARM || currentState == STATE_VERIFICATION) {
       updateDisplayCountdown(sysCtrl.getRemainingTime());
@@ -83,6 +86,21 @@ void serviceDelay(unsigned long ms) {
     }
     delay(10);
   }
+}
+
+// =====================================================================
+//  WATCHDOG PETLI GLOWNEJ - jesli logika centrali zawiesi sie na dluzej
+//  niz 20 s, procesor zostanie zrestartowany (powod trafi do pamieci zdarzen).
+// =====================================================================
+void setupWatchdog() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  esp_task_wdt_config_t cfg = { .timeout_ms = 20000, .idle_core_mask = 0, .trigger_panic = true };
+  esp_task_wdt_reconfigure(&cfg);
+#else
+  esp_task_wdt_init(20, true);     // w starszych wersjach moze zostac domyslne 5 s - tez bezpieczne
+#endif
+  esp_task_wdt_add(NULL);          // nadzorowane zadanie: petla glowna
+  Serial.println("WATCHDOG: aktywny (petla glowna).");
 }
 
 void setup() {
@@ -146,17 +164,25 @@ void setup() {
       // Ciepły start - zresetowano przyciskiem (EN) lub wgrano nowy kod
       logger.addEvent("RESTART", "SYSTEMU"); // <-- DWA ARGUMENTY!
   } 
-  else if (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT) {
-      // Restart po awarii / zacięciu się procesora (tzw. Watchdog)
-      logger.addEvent("RESTART", "CRASH!"); // <-- DWA ARGUMENTY!
+  else if (reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT || reason == ESP_RST_INT_WDT) {
+      // Watchdog: petla glowna zawiesila sie i zostala zrestartowana
+      Serial.println("UWAGA: poprzedni restart wywolal WATCHDOG (zawieszenie programu)");
+      logger.addEvent("RESTART", "WATCHDOG");
+  }
+  else if (reason == ESP_RST_PANIC) {
+      // Restart po bledzie programu
+      logger.addEvent("RESTART", "CRASH!");
   } 
   else {
       // Inny powód startu
       logger.addEvent("START", "INNY"); // <-- DWA ARGUMENTY!
   }
+
+  setupWatchdog();
 }
 
 void loop() {
+  esp_task_wdt_reset();            // "jestem zywa" dla watchdoga
   checkSensors();
   checkKeypad();
   
@@ -250,19 +276,14 @@ if (accessMgr.loop()) {
       updateDisplayClock();
   }
 
-  // --- ODBIÓR Z WIRTUALNEJ KLAWIATURY Z UWZGLĘDNIENIEM ŹRÓDŁA ---
-  String remoteCmd = netMgr.getLatestCommand();
-  if (remoteCmd == "RESET") {
-    actionSource = "WEB"; // Zmieniamy na WEB przed przetworzeniem!
-    sysCtrl.onResetPressed();
-    actionSource = "FIZYCZNIE"; // Wracamy do normy
-  } 
-  else if (remoteCmd.startsWith("KEY_")) {
-    actionSource = "WEB"; // Zmieniamy na WEB przed przetworzeniem!
-    char wirtualnyKlawisz = remoteCmd.charAt(4);
-    sysCtrl.handleInput(wirtualnyKlawisz); 
-    
+  // --- ODBIÓR Z WIRTUALNEJ KLAWIATURY (jeden klawisz na obieg pętli) ---
+  // Klawisz z WWW przechodzi przez TĘ SAMĄ logikę co fizyczna klawiatura,
+  // więc obowiązują te same poziomy dostępu (np. RESET tylko od P2).
+  char wirtualnyKlawisz;
+  if (netMgr.popKey(wirtualnyKlawisz)) {
+    actionSource = "WEB";
+    sysCtrl.handleInput(wirtualnyKlawisz);
     netMgr.publishTelemetry();
-    actionSource = "FIZYCZNIE"; // Wracamy do normy
+    actionSource = "FIZYCZNIE";
   }
 }
