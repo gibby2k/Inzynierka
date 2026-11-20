@@ -300,8 +300,15 @@ void SapNetworkManager::publishTelemetry() {
 void SapNetworkManager::publishAlarm(SystemState state, String stateName, String zone, String source) {
   ensureQueues();
   char json[sizeof(lastAlarmBuf)];
-  snprintf(json, sizeof(json), "{\"code\":%d,\"name\":\"%s\",\"zone\":\"%s\",\"src\":\"%s\"}",
-           (int)state, stateName.c_str(), zone.c_str(), source.c_str());
+  // Opis linii dozorowej (tylko w stanach alarmowych): strefa, numer linii, czujka
+  extern String strefyLinii[]; extern int numeryLinii[]; extern String nazwyLinii[];
+  bool alarmowy = (state == STATE_PRE_ALARM || state == STATE_VERIFICATION || state == STATE_FIRE_ALARM);
+  int li = sysCtrl.getDetectedLine();
+  snprintf(json, sizeof(json),
+           "{\"code\":%d,\"name\":\"%s\",\"zone\":\"%s\",\"src\":\"%s\",\"strefa\":\"%s\",\"line\":%d,\"det\":\"%s\"}",
+           (int)state, stateName.c_str(), zone.c_str(), source.c_str(),
+           alarmowy ? strefyLinii[li].c_str() : "", alarmowy ? numeryLinii[li] : 0,
+           alarmowy ? nazwyLinii[li].c_str() : "");
   xSemaphoreTake(lock, portMAX_DELAY);
   strcpy(lastAlarmBuf, json);      // zapamietany do ponownej publikacji po polaczeniu
   xSemaphoreGive(lock);

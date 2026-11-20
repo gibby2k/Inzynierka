@@ -11,7 +11,10 @@ bool czujkaAlarm = false;
 // NOWA ZMIENNA:
 bool lineBlocked = false; 
 
-String nazwyLinii[LICZBA_LINII] = {"ADR-20 DOMOWA"};
+String nazwyLinii[LICZBA_LINII] = {"ADR-20 DOMOWA"};   // CZUJKA (typ / nazwa)
+// Opis linii dla operatora (wyswietlacz WWW i pop-up). Zmien na swoje nazwy:
+String strefyLinii[LICZBA_LINII] = {"STREFA 1"};        // STREFA (np. "BIURO", "MAGAZYN") - max 8 znakow miesci sie w 1 linii LCD
+int    numeryLinii[LICZBA_LINII] = {1};                 // LINIA dozorowa (numer na centrali)
 int nagraniaLinii[LICZBA_LINII] = {1};
 
 void initSensors() {

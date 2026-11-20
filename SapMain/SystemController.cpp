@@ -136,8 +136,14 @@ void SystemController::handleInput(char key) {
                 else changeState(currentState, currentName, currentZone, actionSource, "P" + String((int)accessMgr.getLevel()));
             } else {
                 showPopup("BLEDNE HASLO", "SPROBUJ PONOWNIE");
-                accessMgr.startLoginSequence();
-                lcdMgr.showLoginScreen("");
+                if (currentState == STATE_PRE_ALARM || currentState == STATE_VERIFICATION || currentState == STATE_FIRE_ALARM) {
+                    // W alarmie wracamy do ekranu alarmu z instrukcja ("wcisnij KASOWANIE (B)")
+                    accessMgr.stopLoginSequence();
+                    changeState(currentState, currentName, currentZone, actionSource, "P" + String((int)accessMgr.getLevel()));
+                } else {
+                    accessMgr.startLoginSequence();
+                    lcdMgr.showLoginScreen("");
+                }
             }
         }
         return; 
@@ -155,7 +161,7 @@ void SystemController::handleInput(char key) {
                 else if (key == '8') { subSubMenuCursor = 1; lcdMgr.showTestOnOffMenu(subMenuCursor == 0 ? "TEST DSO" : "TEST VENT", subSubMenuCursor); }
                 else if (key == '#') {
                     if (subMenuCursor == 0) { 
-                        if (subSubMenuCursor == 1) { playDsoMessage(4); logger.addEvent("TEST DSO", "ON"); showPopup("TEST DSO", "WLACZONY (ON)"); } 
+                        if (subSubMenuCursor == 1) { playDsoMessage(DSO_TRACK_TEST); logger.addEvent("TEST DSO", "ON"); showPopup("TEST DSO", "WLACZONY (ON)"); } 
                         else { stopDso(); logger.addEvent("TEST DSO", "OFF"); showPopup("TEST DSO", "WYLACZONY (OFF)"); }
                     } else { 
                         if (subSubMenuCursor == 1) { setVent(true); logger.addEvent("TEST VEN.", "ON"); showPopup("TEST WENT.", "WLACZONY (ON)"); } 
@@ -418,8 +424,11 @@ void SystemController::activateFireAlarm() {
 }
 
 void SystemController::resetSystem() {
+    extern SystemState currentState;
+    // Pamiec zdarzen: co zostalo skasowane (nie "reset systemu" - centrala nie restartuje sie)
+    const char* coSkasowano = (currentState == STATE_FIRE_ALARM) ? "POZAR" : "WERYFIK.";
     setVent(false); stopDso(); digitalWrite(PIN_BUILTIN_LED, LOW); resetSensorLatches();
-    logger.addEvent("RESET", "SYSTEMU"); 
+    logger.addEvent("KASOWAN.", coSkasowano); 
     changeState(STATE_IDLE, "CZUWANIE", "CALY_OBIEKT", actionSource, "P" + String((int)accessMgr.getLevel()));
 }
 

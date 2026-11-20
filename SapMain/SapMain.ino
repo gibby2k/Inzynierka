@@ -38,6 +38,7 @@ bool ntpEnabled = true; // Globalna flaga NTP
 // --- Funkcja Zmiany Stanu (Globalna) ---
 void changeState(SystemState newState, String name, String zone, String source, String user) {
 
+  bool nowyStan = (newState != currentState);   // false = tylko odswiezenie ekranu (np. po zalogowaniu)
   currentState = newState;
   currentName = name;
   currentZone = zone;
@@ -55,10 +56,12 @@ void changeState(SystemState newState, String name, String zone, String source, 
   // ... (reszta funkcji pozostaje bez zmian - zapisy logger.addEvent itd.)
 
   // --- ZAPIS DO PAMIĘCI ZDARZEŃ (Selektywny) ---
-  if (newState == STATE_PRE_ALARM) logger.addEvent("AL.WST", zone); // np. "01.AL.WST L1-E1"
-  if (newState == STATE_VERIFICATION) logger.addEvent("POTW.", zone); // np. "02.POTW. L1-E1"
-  if (newState == STATE_FIRE_ALARM) logger.addEvent("POZAR", zone); // np. "03.POZAR L1-E1"
-  if (newState == STATE_FAULT) logger.addEvent("AWARIA", zone); // np. "04.AWARIA L1-E1"
+  if (nowyStan) {
+    if (newState == STATE_PRE_ALARM) logger.addEvent("AL.WST", zone); // np. "01.AL.WST L1-E1"
+    if (newState == STATE_VERIFICATION) logger.addEvent("POTW.", zone); // np. "02.POTW. L1-E1"
+    if (newState == STATE_FIRE_ALARM) logger.addEvent("POZAR", zone); // np. "03.POZAR L1-E1"
+    if (newState == STATE_FAULT) logger.addEvent("AWARIA", zone); // np. "04.AWARIA L1-E1"
+  }
   // (Celowo pomijamy STATE_IDLE oraz STATE_MENU)
   
   // --- ZMIANA NA LCD ---
@@ -105,6 +108,7 @@ void setupWatchdog() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.printf("\nRdzen ESP32 Arduino: %d.%d.%d\n", ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH);
   
   // sieć
   netMgr.begin(); 
@@ -169,6 +173,11 @@ void setup() {
       Serial.println("UWAGA: poprzedni restart wywolal WATCHDOG (zawieszenie programu)");
       logger.addEvent("RESTART", "WATCHDOG");
   }
+  else if (reason == ESP_RST_BROWNOUT) {
+      // Spadek napiecia zasilania (np. skok poboru pradu przez wzmacniacz DSO lub przekaznik)
+      Serial.println("UWAGA: poprzedni restart wywolal BROWNOUT (spadek napiecia zasilania)!");
+      logger.addEvent("RESTART", "ZASILAN.");
+  }
   else if (reason == ESP_RST_PANIC) {
       // Restart po bledzie programu
       logger.addEvent("RESTART", "CRASH!");
@@ -220,7 +229,7 @@ if (accessMgr.loop()) {
   }
   
   // 2. Odliczanie czasów T1/T2 (wymusza odświeżanie co 1 sekundę, aby web-timer działał)
-  if (currentState == STATE_PRE_ALARM || currentState == STATE_VERIFICATION) {
+  if (currentState == STATE_PRE_ALARM || currentState == STATE_VERIFICATION || currentState == STATE_FIRE_ALARM) {
       if (millis() - lastMqttPublish >= 1000) {
           needsUpdate = true;
       }
@@ -274,6 +283,23 @@ if (accessMgr.loop()) {
       updateDisplayEditClock(sysCtrl.getEditHour(), sysCtrl.getEditMinute(), sysCtrl.getClockPartIndex());
   } else {
       updateDisplayClock();
+  }
+
+  // --- NADZOR DSO: awaria modulu nie blokuje centrali, ale musi zostac odnotowana ---
+  static bool dsoInitChecked = false, dsoStuckLogged = false;
+  if (!dsoInitChecked && isDsoInitDone()) {
+      dsoInitChecked = true;
+      // Brak odpowiedzi modulu NIE jest awaria - klony DFPlayera nie odpowiadaja,
+      // a mimo to odtwarzaja. Pelny nadzor DSO (linia glosnikowa) - sesja AWARIA.
+  }
+  if (isDsoStuck()) {
+      if (!dsoStuckLogged) {
+          dsoStuckLogged = true;
+          Serial.println("DSO: ZAWIESZENIE modulu - centrala pracuje dalej!");
+          logger.addEvent("AWARIA", "DSO BLAD");
+      }
+  } else {
+      dsoStuckLogged = false;
   }
 
   // --- ODBIÓR Z WIRTUALNEJ KLAWIATURY (jeden klawisz na obieg pętli) ---

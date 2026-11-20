@@ -58,6 +58,7 @@ class SystemController {
     // --- SYSTEM POPUP DLA WIZUALIZACJI ---
     void showPopup(String line1, String line2);
     bool getPopupActive() { return popupActive; }
+    int getDetectedLine() { return detectedLineId; }
     String getPopupL1() { return popupL1; }
     String getPopupL2() { return popupL2; }
 
